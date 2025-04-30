@@ -1,0 +1,18 @@
+from services.OCR import main
+from services.llm import ask_llm
+import asyncio
+
+image_paths = [
+        "images/dowload/1595227146122330398.jpg",
+        "images/dowload/1655786266185834359.jpg",
+    ]
+
+async def Main():
+    
+    checks = await main(image_paths)
+    print("Checks: ", checks)
+    
+    ask_llm_result = await ask_llm("\n".join(check for check in checks if check))
+    print("LLM Result: ", ask_llm_result)
+    
+asyncio.run(Main())
