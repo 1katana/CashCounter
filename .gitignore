@@ -2,9 +2,4 @@ const.py
 venv
 __pycache__
 *.pyc
-*.png
-*.jpg
-*.jpeg
-*.gif
-*.svg
-*.mp4
+
