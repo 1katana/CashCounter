@@ -10,7 +10,7 @@ image_paths = [
 
 async def Main():
     
-    checks = await main(image_paths)
+    checks = await run_ocr(image_paths)
     print("Checks: ", checks)
     
     ask_llm_result = await ask_llm("\n".join(check for check in checks if check))
