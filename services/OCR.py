@@ -63,7 +63,7 @@ async def get_text_from_image(image_path: str):
         except Exception as e:
             logger.exception(f"Ошибка при обработке файла {image_path}: {e}")
 
-async def main(image_paths):
+async def run_ocr(image_paths):
     tasks = [get_text_from_image(image_path) for image_path in image_paths]
     return await asyncio.gather(*tasks)
     
@@ -73,4 +73,4 @@ if __name__ == "__main__":
         "images/dowload/1655786266185834359.jpg",
     ]
     
-    asyncio.run(main(image_paths))
+    asyncio.run(run_ocr(image_paths))

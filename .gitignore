@@ -2,4 +2,6 @@ const.py
 venv
 __pycache__
 *.pyc
-
+.git
+images/downloads/
+images/with_watermark/
