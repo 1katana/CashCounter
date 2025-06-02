@@ -25,16 +25,17 @@ class AsyncDatabase:
                        config:dict = None
                 ):
         
-        config if config else {
-                                "text": "watermark",
-                                "color": (255, 255, 255, 128),
-                                "font_size": 20,
-                                "font_family": "Arial",
-                                "font_style": "normal",
-                                "text_weight": "normal",
-                                "line_spacing": 50,
-                                "angle": 0,
-                            }
+        if config is None:
+            config = {
+                        "text": "watermark",
+                        "color": (255, 255, 255, 128),
+                        "font_size": 20,
+                        "font_family": "Arial",
+                        "font_style": "normal",
+                        "text_weight": "normal",
+                        "line_spacing": 50,
+                        "angle": 0,
+                    }
             
             
         try:
@@ -42,13 +43,13 @@ class AsyncDatabase:
                 {"_id":id},
                 {
                     "$setOnInsert":{
-                        "createdDate": datetime.now(),
-                        "config": config
+                        "createdDate": datetime.now(),        
                     },
                     "$set":{
                         "username": username,
                         "first_name": first_name,
-                        "last_name": last_name
+                        "last_name": last_name,
+                        "config": config
                     }
                 },
                 upsert=True 
@@ -60,13 +61,22 @@ class AsyncDatabase:
 
         
         
-    async def add_file(self, id:int, file_data:dict):
+    async def add_file_download(self, id:int, file_data:dict):
+        """
+        file_data: dict = {
+            "file_id": "fewfwfwftw4fgw4tw4",
+            "file_path": photo/31.jpg,
+            "status": "queued/uploaded",
+            "size": 1024,
+            "uploaded_at": datetime.now()
+        }
+        """
         try:
             await self.users_collection.update_one(
             {"_id":id},
             {
-                "$push":{"files":file_data},
-                "$set": {"processing_order":datetime.now()}
+                "$push":{"files_download": file_data},
+                "$set": {"processing_order": datetime.now()}
             }
             )
 
@@ -74,7 +84,31 @@ class AsyncDatabase:
         except PyMongoError as e:
             logging.error(f"Files added FAIL for user id:{id}")
     
+
+    async def add_file_processed(self, id:int, file_data:dict):
+        """
+        file_data: dict = {
+            "file_id": "fewfwfwftw4fgw4tw4",
+            "file_path": photo/31.jpg,
+            "status": "watermark/error_done/DONE",
+            "processing_time": start - datetime.now()
+        }
+        """
+        try:
+            await self.users_collection.update_one(
+            {"_id":id},
+            {
+                "$push":{"files_watermark": file_data},
+                "$set": {"processing_order": datetime.now()}
+            }
+            )
+
+            logging.info(f"Files added for user id:{id}")
+        except PyMongoError as e:
+            logging.error(f"Files added FAIL for user id:{id}")
         
+
+    # TODO
     async def get_user_files(self,id:int):
         try:
             user = await self.users_collection.find_one({"_id": id})
@@ -83,6 +117,8 @@ class AsyncDatabase:
         except PyMongoError as e:
             logging.error(f"Get user files FAIL for id:{id}")
             return []
+        
+
 
     async def get_file_by_id(self,id:int, file_id:int):
         try:
