@@ -1,12 +1,12 @@
 from openai import OpenAI
-from const import Const
+
 import asyncio
 import logging
 import re
 
 client = OpenAI(
-    base_url=Const.LLM_URL,
-    api_key=Const.LLM_API_KEY,
+    base_url="",
+    api_key="",
 )
 
 SYSTEM_PROMPT = {

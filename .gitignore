@@ -1,7 +1,7 @@
-const.py
 venv
 __pycache__
 *.pyc
 images/downloads
 images/with_watermark
-db.log
+*.log
+.env
