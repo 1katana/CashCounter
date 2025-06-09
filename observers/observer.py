@@ -5,58 +5,96 @@ from db.mongo_db import AsyncDatabase
 from db.statuses import WatermarkStatus,DownloadStatus
 from aiogram.types import InputFile
 from aiogram import Bot
+import asyncio
+import logging
+from processing import OCR,watermark,llm
 
-async def send_photo_with_caption(bot:Bot ,user_id: int, photo_path: str, caption: str):
-    """
-    Отправляет фото с подписью пользователю в Telegram.
-
-    :param bot: экземпляр Bot
-    :param user_id: Telegram ID пользователя
-    :param photo_path: путь к изображению (локальный файл)
-    :param caption: подпись под фото
-    """
-    photo = InputFile(photo_path)
-    await bot.send_photo(chat_id=user_id, photo=photo, caption=caption)
-
-async def download(bot:Bot ,file_path,destination):
-    await bot.download_file(
-                file_path, 
-                destination
-            )
 
 class Observer:
 
-    def __init__(self,bot:Bot,db:AsyncDatabase,file_path_dowload:str,file_path_processed:str):
-
+    def __init__(self, bot: Bot, db: AsyncDatabase, file_path_download: str, file_path_processed: str):
         self.bot = bot
         self.db = db
+        self.semaphore = asyncio.Semaphore(5)
 
-        self.file_path_dowload = file_path_dowload
+        self.file_path_download = file_path_download
         self.file_path_processed = file_path_processed
 
-        self.current = None
-        self.images_download = []
-        self.images_watermark = []
+        self.download_queue = asyncio.Queue()
+        self.process_queue = asyncio.Queue()
+        self.send_queue = asyncio.Queue() 
 
 
-    async def observer_download(self):
-        user = await self.db.get_one_with_status(DownloadStatus.QUEUED)    
-        if user is not None:
-            for file in user["files_download"]:
-                await self.bot.download_file(
-                    file["file_path"], 
-                    self.file_path_dowload + file["file_id"]+".jpg"
-                )
+        
 
-                file["file_path"] = self.file_path_dowload + file["file_id"]
-                file["status"] = DownloadStatus.UPLOADED.value
+    async def start(self):
+        asyncio.create_task(self.update_to_download())
+        asyncio.create_task(self.download())
+        
+    async def update_to_download(self):
+        current_items = {item["_id"] for item in self.download_queue._queue}  
+        new_items = [
+            item for item in await self.db.get_users_with_files_by_status(DownloadStatus.QUEUED,2)
+            if item["_id"] not in current_items  
+        ]
+        for item in new_items:
+            await self.download_queue.put(item)
+
+    async def update_to_process(self):
+        current_items = {item["_id"] for item in self.process_queue._queue}  
+        new_items = [
+            item for item in await self.db.get_users_with_files_by_status(DownloadStatus.UPLOADED,1)
+            if item["_id"] not in current_items  
+        ]
+        for item in new_items:
+            await self.process_queue.put(item)
+
+    async def update_to_send(self):
+        current_items = {item["_id"] for item in self.send_queue._queue}  
+        new_items = [
+            item for item in await self.db.get_users_with_files_by_status([WatermarkStatus.DONE,WatermarkStatus.ERROR_DONE],2)
+            if item["_id"] not in current_items  
+        ]
+        for item in new_items:
+            await self.send_queue.put(item)
+        
+    async def download(self):
+        
+        while True:
+            async with self.semaphore:
+                user = await self.download_queue.get()
                 
-                await self.db.update_file_download_fields(user["_id"],file["file_id"],file)
-                print()
+                for file in user["files"]:
+                    path = f"{self.file_path_download}{file['file_id']}.jpg"
+                    await self.bot.download_file(file["file_path"], path)
 
-    
-    async def observer_receive(self):
-        pass
+                    file["file_path"] = path
+                    file["status"] = DownloadStatus.UPLOADED.value
 
-    async def processing(self):
-        pass
+                    await self.db.update_file_download_fields(user["_id"], file["file_id"], file)
+
+            await asyncio.sleep(60)
+
+    async def process_image(self):
+        while True:
+            async with self.semaphore:
+                user = await self.process_queue.get()
+                
+                for file in user["files"]:
+                    path = f"{self.file_path_download}{file['file_id']}.jpg"
+                    
+                    text = await OCR.get_text_from_image()
+                    caption = await llm.ask_llm(text)
+                    watermark.add_watermark()
+
+                    file["file_path"] = path
+                    file["status"] = DownloadStatus.UPLOADED.value
+
+                    await self.db.update_file_download_fields(user["_id"], file["file_id"], file)
+
+            await asyncio.sleep(60)
+        
+
+    async def send_image(self):
+        # TODO
+        await self.bot.send_photo()

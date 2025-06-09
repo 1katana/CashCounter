@@ -8,6 +8,5 @@ class DownloadStatus(Status):
     UPLOADED = "uploaded"
 
 class WatermarkStatus(Status):
-    WATERMARK = "watermark"
     ERROR_DONE = "error_done"
     DONE = "done"

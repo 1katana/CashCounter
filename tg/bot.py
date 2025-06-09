@@ -93,7 +93,7 @@ def setup_handlers(router:Router,bot:Bot,db:AsyncDatabase,observer:Observer):
                                                     "size": file.file_size,
                                                     "uploaded_at": datetime.now()
                                                     })
-            await observer.observer_download()
+            await observer.update_to_download()
 
         except Exception as e:
             logging.error(f"ERROR: {e}")

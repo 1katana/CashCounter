@@ -3,7 +3,7 @@ from pymongo.errors import PyMongoError
 from datetime import datetime
 import logging
 from db.statuses import Status,DownloadStatus,WatermarkStatus
-
+from typing import Dict, List, Union
 
 
 logging.basicConfig(level=logging.INFO,
@@ -20,6 +20,11 @@ class AsyncDatabase:
             self.db = self.client[db_name]
             self.users_collection = self.db['users']
             logging.info(f"Connected to MongoDB database: {db_name}")
+
+            self.type_file_map = {
+                DownloadStatus: "file_download",
+                WatermarkStatus: "files_watermark"
+            }
         except PyMongoError as e:
             logging.error(f"Failed to connect to MongoDB: {e}")
 
@@ -68,227 +73,154 @@ class AsyncDatabase:
         except PyMongoError as e:
             logging.error(f"Error adding user {id}: {e}")
 
-        
-     
-    async def add_file_download(self, id: int, file_data: dict):
+
+    async def add_message(self, id: int, message: dict):
         """
         Добавляет файл пользователю, если файл с таким file_id ещё не был добавлен.
         Устанавливает processing_order, если он отсутствует.
+        id: _id
+        message: dict = {
+            message_id: int
+            processing_order: time
+            status: Status
+            files: list = [
+                file_data: dict = {
+                    "file_id": "fewfwfwftw4fgw4tw4",
+                    "file_path": photo/31.jpg,
+                }
+                ...
+            ]
+        }
         """
+        message["status"] = DownloadStatus.QUEUED.value
+        message["processing_order"]=datetime.now()
         try:
-            file_id = file_data.get("file_id")
-            if file_id is None:
-                raise ValueError("file_data must contain file_id")
-            
-            # Добавление файла, если его ещё нет
             await self.users_collection.update_one(
-                {
-                    "_id": id,
-                    "files_download": {
-                        "$not": {
-                            "$elemMatch": {"file_id": file_id}
-                        }
-                    }
-                },
-                {
-                    "$push": {"files_download": file_data},
-                }
+                {"$_id":id,
+                 "messages.message_id": {"$ne":message["message_id"]}},
+                {"$push":{
+                    "messages":message
+                }}
             )
-            await self.users_collection.update_one(
-                {
-                    "_id": id,
-                    "$or": [
-                        {"processing_order": {"$exists": False}},
-                        {"processing_order": None}
-                    ]
-                },
-                {
-                    "$set": {"processing_order": datetime.now()}
-                }
-            )
-
-            logging.info(f"File added for user id: {id}")
-        
-        except ValueError as e:
-            logging.error(f"Validation error for user id {id}: {e}")
         except PyMongoError as e:
-            logging.error(f"MongoDB error adding file for user id {id}: {e}")
+            logging.error(f"Ошибка добавления сообщения пользователю {id}: {e}")
 
+    
 
-    async def add_file_watermark(self, id:int, file_data:dict):
+    async def update_fields(self, user_id: int,message_id:int, file_id: int, updated_fields: dict):
         """
-        file_data: dict = {
-            "file_id": "fewfwfwftw4fgw4tw4",
-            "file_path": photo/31.jpg,
-            "status": "watermark/error_done/DONE",
-            "processing_time": start - datetime.now()
+        Обновляет произвольные поля файла по его file_id у пользователя с _id = user_id.
+        
+        :param user_id: Telegram ID пользователя
+        :param message_id ID сообщения
+        :param file_id: Идентификатор файла в списке files
+        :param updated_fields: Словарь с ключами и новыми значениями, которые нужно изменить
+        """
+        if not updated_fields:
+            return False
+
+        try:
+            set_fields = {
+                f"messages.$[m].files.$[f].file_data.{k}": v 
+                for k,v in updated_fields.items()
+            }
+
+            result = await self.users_collection.update_one(
+                {"_id":id},
+                {
+                    "$set": set_fields
+                },
+                array_filters={
+                    "m.message_id":message_id,
+                    "f.file_data.file_id": file_id
+                }
+            )
+
+            return result.modified_count>0
+        
+        except PyMongoError as e:
+            logging.error(f"update error: {e}")
+            return False
+        
+    async def update_status_message(self, 
+                                    user_id:int, 
+                                    message_id:int, 
+                                    status: WatermarkStatus | DownloadStatus):
+        
+        try: 
+            if not isinstance(status,(WatermarkStatus, DownloadStatus)):
+                return False
+            
+            result = await self.users_collection.update_one(
+                {"_id":user_id,
+                "messages.message_id":message_id},
+                {"$set":{
+                    "messages.$.status":status.value
+                }}
+            )
+            return result.modified_count > 0 
+        
+        except PyMongoError as e:
+            logging.error(f"Updating status error: {e}")
+            return False
+
+    
+
+    async def get_users_with_files_by_status(
+        self, 
+        statuses: Union[WatermarkStatus, DownloadStatus, List[Union[WatermarkStatus, DownloadStatus]]],
+        limit: int = 1
+    ) -> List[Dict]:
+        """
+        Возвращает список пользователей с файлами указанного статуса.
+        
+        :param status: Один или несколько статусов (WatermarkStatus или DownloadStatus)
+        :param limit: Максимальное количество возвращаемых пользователей
+        :return: Список словарей вида {
+            "user_id": ...,
+            "files": [...]  # Только файлы с искомым статусом
         }
         """
         try:
-            file_id = file_data.get("file_id")
-            if file_id is None:
-                raise ValueError("file_data must contain file_id")
-            
-            # Добавление файла, если его ещё нет
-            await self.users_collection.update_one(
+
+            if not isinstance(statuses,list):
+                statuses = [statuses]
+
+            if not isinstance(statuses[0],(WatermarkStatus, DownloadStatus)):
+                raise ValueError("")
+
+            status_value = [s.value for s in statuses]
+
+            pipeline = [
+                {"$unwind": "$messages"},
+                {"$match": 
+                {"messages.status": {"$in": status_value}} },
+                {"$sort":{"messages.processing_order":1}},
+                {"$group":{
+                    "_id":"$_id",
+                    "messages":{"$push":{"$messages"}},
+                    "processing_order":{"$first":"$messages.processing_order"}
+
+                }},
                 {
-                    "_id": id,
-                    "files_watermark": {
-                        "$not": {
-                            "$elemMatch": {"file_id": file_id}
-                        }
+                    "$sort":{
+                        "processing_order":1
                     }
                 },
-                {
-                    "$push": {"files_watermark": file_data},
-                }
-            )
-            await self.users_collection.update_one(
-                {
-                    "_id": id,
-                    "$or": [
-                        {"processing_order": {"$exists": False}},
-                        {"processing_order": None}
-                    ]
-                },
-                {
-                    "$set": {"processing_order": datetime.now()}
-                }
-            )
+                {"$limit":limit},
+                {"$project":{
+                    "_id": 1,
+                    "messages":1
+                }}
+            ]
 
-            logging.info(f"File added for user id: {id}")
-        
-        except ValueError as e:
-            logging.error(f"Validation error for user id {id}: {e}")
-        except PyMongoError as e:
-            logging.error(f"MongoDB error adding file for user id {id}: {e}")
-        
-
-    
-    async def get_user_files_download(self,id:int):
-        try:
-            user = await self.users_collection.find_one({"_id": id})
-            logging.info(f"Get user files_download for id:{id}")
-            return user.get("files_download", []) if user else []
-        except PyMongoError as e:
-            logging.error(f"Get user files_download FAIL for id:{id}")
-            return []
-        
-    async def get_user_files_watermark(self,id:int):
-        try:
-            user = await self.users_collection.find_one({"_id": id})
-            logging.info(f"Get user files_watermark for id:{id}")
-            return user.get("files_watermark", []) if user else []
-        except PyMongoError as e:
-            logging.error(f"Get user files_watermark FAIL for id:{id}")
-            return []
-
-    async def get_file_download_by_id(self,id:int, file_id:int):
-        try:
-            user = await self.users_collection.find_one({"_id": id, "files_download.file_id": file_id},{"files_download.$": 1})
-
-            logging.info(f"Get file_download by id for id:{id}")
-            if user and user.get("files_download"):
-                return user["files_download"][0]
-        except:
-            logging.error(f"Get file_download by id FAIL for id:{id}")
-        finally:
-            return None
-        
-    async def get_file_watermark_by_id(self,id:int, file_id:int):
-        try:
-            user = await self.users_collection.find_one({"_id": id, "files_watermark.file_id": file_id},{"files_watermark.$": 1})
-
-            logging.info(f"Get file_watermark by id for id:{id}")
-            if user and user.get("files_watermark"):
-                return user["files_download"][0]
-        except:
-            logging.error(f"Get file_watermark by id FAIL for id:{id}")
-        finally:
-            return None
-        
-
-    async def update_file_download_fields(self, user_id: int, file_id: int, updated_fields: dict):
-        """
-        Обновляет произвольные поля файла по его file_id у пользователя с _id = user_id.
-        
-        :param user_id: Telegram ID пользователя
-        :param file_id: Идентификатор файла в списке files
-        :param updated_fields: Словарь с ключами и новыми значениями, которые нужно изменить
-        """
-        if not updated_fields:
-            return  
-
-        set_fields = {f"files_download.$.{k}": v for k, v in updated_fields.items()}
-
-        result = await self.users_collection.update_one(
-            {"_id": user_id, "files_download.file_id": file_id},
-            {"$set": set_fields}
-        )
-        return result.modified_count > 0
-    
-
-    async def update_file_watermark_fields(self, user_id: int, file_id: int, updated_fields: dict):
-        """
-        Обновляет произвольные поля файла по его file_id у пользователя с _id = user_id.
-        
-        :param user_id: Telegram ID пользователя
-        :param file_id: Идентификатор файла в списке files
-        :param updated_fields: Словарь с ключами и новыми значениями, которые нужно изменить
-        """
-        if not updated_fields:
-            return  
-
-        set_fields = {f"files_watermark.$.{k}": v for k, v in updated_fields.items()}
-
-        result = await self.users_collection.update_one(
-            {"_id": user_id, "files_watermark.file_id": file_id},
-            {"$set": set_fields}
-        )
-
-        return result.modified_count > 0
-
-
-    async def get_one_with_status(self, status: Status):
-        query = None
-
-        if isinstance(status, WatermarkStatus):
-            query = {
-                "files_watermark": {
-                    "$elemMatch": {"status": status.value}
-                }
-            }
-
-        elif isinstance(status, DownloadStatus):
-            query = {
-                "files_download": {
-                    "$elemMatch": {"status": status.value}
-                }
-            }
-
-        if query:
-            return await self.users_collection.find_one(query, sort=[("processing_order", 1)])
-        return None
-
-
-
-
-    async def update_file_watermark_status(self,id:int, file_id:int, status:WatermarkStatus):
-        try:
-            await self.users_collection.update_one(
-                {"_id": id, "files_watermark.file_id": file_id},
-                {"$set": {"files_watermark.$.status": status}}
-            )
-            logging.error(f"Updated for:{id}")
+            cursor = self.users_collection.aggregate(pipeline=pipeline)
+            return await cursor.to_list(length=limit)
+            
         except PyMongoError as e:
             logging.error(f"Update error for:{id}")
+            return []
 
-    async def update_file_download_status(self,id:int, file_id:int, status:DownloadStatus):
-        try:
-            await self.users_collection.update_one(
-                {"_id": id, "files_download.file_id": file_id},
-                {"$set": {"files_download.$.status": status}}
-            )
-            logging.error(f"Updated for:{id}")
-        except PyMongoError as e:
-            logging.error(f"Update error for:{id}")
+
+
+
