@@ -8,7 +8,7 @@ def add_watermark(input_image_path,
                  line_spacing=50, 
                  font_size=40,
                  angle=45, 
-                 color=(255, 255, 255, 128)):
+                 color=(255, 255, 255, 128)) -> str|None:
     """
     Добавляет водяные знаки по диагонали, полностью заполняя изображение.
 
@@ -83,15 +83,15 @@ def add_watermark(input_image_path,
         
         if output_ext.lower() in [".jpg", ".jpeg"]:
             watermarked = watermarked.convert("RGB")
-            watermarked.save(output_image_path, quality=95)
+            watermarked.save(output_image_path, quality=100)
         else:
             watermarked.save(output_image_path)
             
-        return True
+        return output_image_path
     
     except Exception as e:
         print(f"Error: {e}")
-        return False
+        return None
     
     
     

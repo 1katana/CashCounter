@@ -86,13 +86,17 @@ def setup_handlers(router:Router,bot:Bot,db:AsyncDatabase,observer:Observer):
                 file_id = message.document.file_id
 
             file = (await message.bot.get_file(file_id))
+
+            await db.add_message(message.from_user.id,{
+                "message_id": message.message_id,
+                "files": [
+                    {
+                        "file_id": message.file_id,
+                        "file_path": file.file_path,
+                    }
+                ]
+            })
             
-            await db.add_file_download(message.from_user.id,{"file_id":file_id,
-                                                    "file_path": file.file_path,
-                                                    "status":DownloadStatus.QUEUED,
-                                                    "size": file.file_size,
-                                                    "uploaded_at": datetime.now()
-                                                    })
             await observer.update_to_download()
 
         except Exception as e:

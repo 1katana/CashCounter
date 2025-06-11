@@ -196,12 +196,6 @@ class AsyncDatabase:
                 {"$match": 
                 {"messages.status": {"$in": status_value}} },
                 {"$sort":{"messages.processing_order":1}},
-                {"$group":{
-                    "_id":"$_id",
-                    "messages":{"$push":{"$messages"}},
-                    "processing_order":{"$first":"$messages.processing_order"}
-
-                }},
                 {
                     "$sort":{
                         "processing_order":1
@@ -209,8 +203,9 @@ class AsyncDatabase:
                 },
                 {"$limit":limit},
                 {"$project":{
-                    "_id": 1,
-                    "messages":1
+                    "_id": 0,
+                    "user_id": "$_id",
+                    "message": "$messages"
                 }}
             ]
 
