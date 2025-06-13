@@ -10,7 +10,7 @@ class LLM:
         # self.BASE_URL = BASE_URL
         # self.API_KEY = API_KEY
         self.SYSTEM_PROMPT = SYSTEM_PROMPT
-        client = AsyncOpenAI(
+        self.client = AsyncOpenAI(
             base_url=BASE_URL,
             api_key=API_KEY,
         )
@@ -28,52 +28,3 @@ class LLM:
         )
         return completion.choices[0].message.content
 
-
-if __name__ == "__main__":
-    result = asyncio.run(ask_llm("""
-O
-12:43
-Done
-Payment success
-¥1920.00
-Svetlana        ¥1920.00
-Payment method  Balance
-Translate
-O
-                                 
-O
-*珍向*玉玲转帐 子回单专用章     ¥12000.00
-14:38 0 0
-转账详情
-中国农业银行股份有限公司
-付款人  *珍
-付款账户        6228****6418
-收款人  *玉玲
-收款账户        6013****3518
-收款银行        中国银行
-转账金额        12000.00元
-交易时间        2025-04-17 14:32:07
-转账附言
-此回单为付款人生成，表示汇款申请已提交，资金到账状态
-以您收款账户实际情况为准。
-O
-
-O
-6O
-陈璟如
--100,000.00
-交易成功
-支付时间        2025-04-1714:39:59
-款方式  账户余额
-品说明  收钱码收款
-款方全称        **如（个人）
-「单号  2025041722001400091413974159
-家订单号        47448719583042074000094
-单管理
-为您统计了最近的花费趋势，去看看分析吧～
-单分类  商业服务〉
-签和备注        加
-入收支
-O"""))
-
-    print(result)

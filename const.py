@@ -1,4 +1,4 @@
-
+from pathlib import Path
 import os
 
 
@@ -13,8 +13,13 @@ class Const:
 
     TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 
-    FILE_PATH_DOWNLOAD = os.getenv("FILE_PATH_DOWNLOAD")
-    FILE_PATH_PROCESSED = os.getenv("FILE_PATH_PROCESSED")
+    BASE_DIR = Path(__file__).resolve().parent
+
+    FILE_PATH_DOWNLOAD = BASE_DIR / "images" / "downloads"
+    FILE_PATH_PROCESSED = BASE_DIR / "images" / "with_watermark"
+
+    FILE_PATH_DOWNLOAD.mkdir(parents=True,exist_ok=True)
+    FILE_PATH_PROCESSED.mkdir(parents=True,exist_ok=True)
 
     SYSTEM_PROMPT = SYSTEM_PROMPT = {
     "role": "system",
@@ -139,10 +144,13 @@ O
 Вывод: 
 1000 ₽
 
-Кратко:
-Условие	Действие
-В чеке только одна валюта или первая найденная - Считаем суммы только этой валюты
-Остальные валюты в чеке - Игнорируем полностью
-Вывод - Только итог по выбранной валюте
+Вход:
+O
+Привет! как дела ахахха вот так вот
+O
+
+Вывод: 
+-
+
 """
 }

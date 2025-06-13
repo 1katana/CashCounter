@@ -10,6 +10,7 @@ import logging
 from processing.watermark import add_watermark
 from processing.OCR import OCR
 from processing.llm import LLM
+from pathlib import Path
 
 class Observer:
 
@@ -32,10 +33,20 @@ class Observer:
         
 
     async def start(self):
-        asyncio.create_task(self.upload_to_download())
+        asyncio.create_task(self.process_image())
         asyncio.create_task(self.download())
+
+        asyncio.create_task(self.__upload_to_process())
+        asyncio.create_task(self.__upload_to_download())
         
-    async def upload_to_download(self):
+
+
+    async def add_message_with_update(self,id:int,message:dict):
+        result = await self.db.add_message(id,message)
+        if result:
+            await self.download_queue.put(result)
+        
+    async def __upload_to_download(self):
         current_items = {item["_id"] for item in self.download_queue._queue}  
         new_items = [
             item for item in await self.db.get_users_with_files_by_status(DownloadStatus.QUEUED,2)
@@ -44,7 +55,7 @@ class Observer:
         for item in new_items:
             await self.download_queue.put(item)
 
-    async def upload_to_process(self):
+    async def __upload_to_process(self):
         current_items = {item["_id"] for item in self.process_queue._queue}  
         new_items = [
             item for item in await self.db.get_users_with_files_by_status(DownloadStatus.UPLOADED,1)
@@ -53,7 +64,7 @@ class Observer:
         for item in new_items:
             await self.process_queue.put(item)
 
-    async def upload_to_send(self):
+    async def __upload_to_send(self):
         current_items = {item["_id"] for item in self.send_queue._queue}  
         new_items = [
             item for item in await self.db.get_users_with_files_by_status([WatermarkStatus.DONE,WatermarkStatus.ERROR_DONE],2)
@@ -67,47 +78,54 @@ class Observer:
         while True:
             try:
                 async with self.semaphore:
-                    message = await self.download_queue.get()
+                    data = await self.download_queue.get()
+                    user_id = data["user_id"]
+                    message = data["message"]
                     
                     for file in message["files"]:
-                        path = f"{self.file_path_download}{file['file_id']}.jpg"
+                        path = str(Path(self.file_path_download) / f"{file['file_id']}.jpg")
                         await self.bot.download_file(file["file_path"], path)
 
-                        file_updated = file.copy()
-                        file_updated["file_path"] = path
-                        await self.db.update_fields(message["user_id"],
+                        file["file_path"] = f"{file['file_id']}.jpg"
+                        await self.db.update_fields(user_id,
                                                     message["message_id"],
                                                     file["file_id"],
-                                                    file_updated)
+                                                    file)
 
                     message["status"] = DownloadStatus.UPLOADED.value
-                    await self.db.update_status_message(message["user_id"],
+                    await self.db.update_status_message(user_id,
                                                         message["message_id"],
                                                         DownloadStatus.UPLOADED)
                     self.download_queue.task_done()
-                    await self.process_queue.put(message)
+                    await self.process_queue.put({"user_id":user_id,
+                                                  "message":message})
 
             except Exception as e:
                 logging.error(f"Ошибка скачивания {e}")
+            
+            await asyncio.sleep(0)
 
 
     async def process_image(self):
         while True:
             try:
                 async with self.semaphore:
-                    message = await self.process_queue.get()
+                    data = await self.process_queue.get()
+                    user_id = data["user_id"]
+                    message = data["message"]
+
+                    config = (await self.db.get_configuration(user_id))["config"]
 
                     full_text = ""
                     caption = None
                     
                     for file in message["files"]:
-                        path = f"{self.file_path_download}{file['file_id']}"
-
+                        path = str(Path(self.file_path_download) / f"{file['file_path']}")
                         
                         watermark_path = None
 
                         try:
-                            text = await OCR.get_text_from_image(image_path=path)
+                            text = await self.OCR.get_text_from_image(image_path=path)
                             if text:
                                 full_text += text
                         except Exception as e:
@@ -119,17 +137,24 @@ class Observer:
                                 add_watermark,
                                 path,
                                 self.file_path_processed, 
+                                config["text"],
+                                config["line_spacing"],
+                                config["font_size"],
+                                config["angle"],
+                                tuple(config["color"]),
                             )
-                            if watermark_path is None:
+                            if watermark_path:
+                                relative_path = Path(watermark_path).relative_to(self.file_path_processed)
+                                file["file_path"] = str(relative_path)
+                            else:
                                 raise ValueError("Функция вернула None")
 
-                            file["file_path"] = watermark_path
                         except Exception as e:
                             logging.error(f"Ошибка при добавлении водяного знака для файла {file['file_id']}: {e}")
                         
                         
                         await self.db.update_fields(
-                            message["user_id"],
+                            user_id,
                             message["message_id"],
                             file["file_id"],
                             file
@@ -137,18 +162,24 @@ class Observer:
                     
                     try:
                         if full_text != "":
-                            caption = await LLM.ask_llm(full_text)
+                            caption = await self.LLM.ask_llm(full_text)
                     except Exception as e:
                         logging.warning(f"LLM не удалось для файла {file['file_id']}: {e}")
 
-                    status = WatermarkStatus.DONE.value if caption else WatermarkStatus.ERROR_DONE.value
 
+                    status = WatermarkStatus.DONE.value if caption else WatermarkStatus.ERROR_DONE.value
+                    message["status"] = status
                     await self.db.update_status_message(
-                        message["user_id"],
+                        user_id,
                         message["message_id"],
                         status
                     )
+
+                    # Удаление download
+
                     self.process_queue.task_done()
+                    await self.send_queue.put({"user_id":user_id,
+                                                "message":message})
 
             except Exception as e:
                 logging.error(f"Ошибка обработки сообщения: {e}")

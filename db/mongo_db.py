@@ -95,16 +95,19 @@ class AsyncDatabase:
         message["status"] = DownloadStatus.QUEUED.value
         message["processing_order"]=datetime.now()
         try:
-            await self.users_collection.update_one(
-                {"$_id":id,
+            result = await self.users_collection.update_one(
+                {"_id":id,
                  "messages.message_id": {"$ne":message["message_id"]}},
                 {"$push":{
                     "messages":message
                 }}
             )
+            if result.modified_count>0:
+                return {"user_id":id,"message": message}
+            return None
         except PyMongoError as e:
             logging.error(f"Ошибка добавления сообщения пользователю {id}: {e}")
-
+            return None
     
 
     async def update_fields(self, user_id: int,message_id:int, file_id: int, updated_fields: dict):
@@ -121,25 +124,64 @@ class AsyncDatabase:
 
         try:
             set_fields = {
-                f"messages.$[m].files.$[f].file_data.{k}": v 
+                f"messages.$[m].files.$[f].{k}": v 
                 for k,v in updated_fields.items()
             }
 
             result = await self.users_collection.update_one(
-                {"_id":id},
+                {"_id":user_id},
                 {
                     "$set": set_fields
                 },
-                array_filters={
-                    "m.message_id":message_id,
-                    "f.file_data.file_id": file_id
-                }
+                array_filters=[
+                    {"m.message_id": message_id},
+                    {"f.file_id": file_id}
+                ]
             )
 
             return result.modified_count>0
         
         except PyMongoError as e:
             logging.error(f"update error: {e}")
+            return False
+        
+    async def get_configuration(self, user_id:int):
+        try:
+            result = await self.users_collection.find_one(
+                {"_id":user_id},
+                {
+                    "config": 1  
+                }
+            )
+
+            if result:
+                result["user_id"] = result["_id"]
+                del result["_id"]  
+            return result
+        
+        except PyMongoError as e:
+            logging.error(f"Ошибка получения конфигурации: {e}")
+            return None
+
+
+    async def update_configuration(self, user_id:int, config:dict):
+        try:
+
+            result = await self.users_collection.update_one(
+                {
+                    "_id": id
+                },
+                {
+                    "$set":{
+                        "config":config
+                    }
+                
+                }
+            )
+            return result.modified_count > 0 
+
+        except PyMongoError as e:
+            logging.error(f"Updating config error: {e}")
             return False
         
     async def update_status_message(self, 

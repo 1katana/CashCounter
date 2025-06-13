@@ -2,6 +2,7 @@ from PIL import Image, ImageDraw, ImageFont
 import math
 import os
 
+
 def add_watermark(input_image_path, 
                  output_image_path, 
                  watermark_text, 
