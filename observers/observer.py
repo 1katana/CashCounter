@@ -3,7 +3,7 @@ from aiogram import Bot
 from const import Const
 from db.mongo_db import AsyncDatabase
 from db.statuses import WatermarkStatus,DownloadStatus
-from aiogram.types import InputFile
+from aiogram.types import FSInputFile, InputMediaPhoto
 from aiogram import Bot
 import asyncio
 import logging
@@ -11,6 +11,7 @@ from processing.watermark import add_watermark
 from processing.OCR import OCR
 from processing.llm import LLM
 from pathlib import Path
+import os
 
 class Observer:
 
@@ -19,8 +20,6 @@ class Observer:
         self.db = db
         self.OCR = OCR
         self.LLM = LLM
-
-        self.semaphore = asyncio.Semaphore(5)
 
         self.file_path_download = file_path_download
         self.file_path_processed = file_path_processed
@@ -33,11 +32,14 @@ class Observer:
         
 
     async def start(self):
+        asyncio.create_task(self.send_image(asyncio.Semaphore(2)))
         asyncio.create_task(self.process_image())
-        asyncio.create_task(self.download())
+        asyncio.create_task(self.download(asyncio.Semaphore(2)))
 
+        asyncio.create_task(self.__upload_to_send())
         asyncio.create_task(self.__upload_to_process())
         asyncio.create_task(self.__upload_to_download())
+        
         
 
 
@@ -74,10 +76,10 @@ class Observer:
             await self.send_queue.put(item)
         
 
-    async def download(self):
+    async def download(self,semaphore=asyncio.Semaphore(1)):
         while True:
             try:
-                async with self.semaphore:
+                async with semaphore:
                     data = await self.download_queue.get()
                     user_id = data["user_id"]
                     message = data["message"]
@@ -106,10 +108,10 @@ class Observer:
             await asyncio.sleep(0)
 
 
-    async def process_image(self):
+    async def process_image(self,semaphore=asyncio.Semaphore(1)):
         while True:
             try:
-                async with self.semaphore:
+                async with semaphore:
                     data = await self.process_queue.get()
                     user_id = data["user_id"]
                     message = data["message"]
@@ -163,16 +165,18 @@ class Observer:
                     try:
                         if full_text != "":
                             caption = await self.LLM.ask_llm(full_text)
+                            message["caption"] = caption
                     except Exception as e:
                         logging.warning(f"LLM не удалось для файла {file['file_id']}: {e}")
 
 
-                    status = WatermarkStatus.DONE.value if caption else WatermarkStatus.ERROR_DONE.value
-                    message["status"] = status
+                    status = WatermarkStatus.DONE if caption else WatermarkStatus.ERROR_DONE
+                    message["status"] = status.value
                     await self.db.update_status_message(
                         user_id,
                         message["message_id"],
-                        status
+                        status,
+                        fields = message
                     )
 
                     # Удаление download
@@ -185,7 +189,35 @@ class Observer:
                 logging.error(f"Ошибка обработки сообщения: {e}")
             await asyncio.sleep(0)
         
+    async def send_image(self,semaphore=asyncio.Semaphore(1)):
+        while True:
+            try:
 
-    async def send_image(self):
-        # TODO
-        await self.bot.send_photo()
+                async with semaphore:
+                    data = await self.send_queue.get()
+                    user_id = data["user_id"]
+                    message = data["message"]
+
+                    media = []
+                    
+                    for idx, file in enumerate(message["files"]):
+                        
+                            path = str(Path(self.file_path_processed) / f"{file['file_path']}")
+                            if not os.path.exists(path):
+                                logging.warning(f"Файл не найден: {path}")
+                                continue
+
+                            if idx == 0:
+                                media.append(InputMediaPhoto(media=FSInputFile(path), caption=message["caption"]))
+                            else:
+                                media.append(InputMediaPhoto(media=FSInputFile(path)))
+
+                    await self.bot.send_media_group(chat_id=user_id, media=media)
+
+                    self.send_queue.task_done()
+
+            except Exception as e:
+                logging.error(f"Ошибка при обработке отправки: {e}")
+
+            await asyncio.sleep(0)
+            

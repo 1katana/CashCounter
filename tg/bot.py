@@ -44,11 +44,16 @@ def setup_handlers(router:Router,bot:Bot,db:AsyncDatabase,observer:Observer):
     @media_group_handler
     async def handle_album(messages: list[Message]):
         """Обрабатывает альбом из нескольких изображений"""
-        await messages[0].answer(f"🔍 Получен альбом из {len(messages)} изображений...")
-        
-        success = 0
-        for msg in messages:
-            try:
+        try:
+            await messages[0].answer(f"🔍 Получен альбом из {len(messages)} изображений...")
+            
+            success = 0
+            user_id = messages[0].from_user.id
+            message_id = messages[0].message_id
+            files = []
+
+            for msg in messages:
+                
                 if msg.photo:
                     file_id = msg.photo[-1].file_id
                 else:
@@ -56,14 +61,27 @@ def setup_handlers(router:Router,bot:Bot,db:AsyncDatabase,observer:Observer):
 
                 file = await msg.bot.get_file(file_id)
                 
+                files.append({
+                                "file_id": file.file_id,
+                                "file_path": file.file_path
+                            })
+                
 
                 success += 1
 
-            except Exception as e:
+                
+
+            await observer.add_message_with_update(user_id,message=
+                                                        {
+                                                            "message_id": message_id,
+                                                            "files": files
+                                                        })
+            
+            await messages[0].answer(f"✅ Сохранено {success}/{len(messages)} изображений")
+
+        except Exception as e:
                 logging.error(f"ERROR: {e}")
                 await messages[0].answer(f"❌ Не получилось обработать файлы")
-        
-        await messages[0].answer(f"✅ Сохранено {success}/{len(messages)} изображений")
 
 
 

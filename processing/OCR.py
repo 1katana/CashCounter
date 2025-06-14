@@ -17,8 +17,8 @@ class OCR:
         self.OCR_URL = OCR_URL
 
     async def __recognize_text_from_image(self,image:tuple):
-        timeout = aiohttp.ClientTimeout(total=30)
-        async with aiohttp.ClientSession() as session:
+        timeout = aiohttp.ClientTimeout(total=20)
+        async with aiohttp.ClientSession(timeout=timeout) as session:
             
             form_data = aiohttp.FormData()
             form_data.add_field('apikey', self.OCR_API_KEY)

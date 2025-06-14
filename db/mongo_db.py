@@ -94,6 +94,7 @@ class AsyncDatabase:
         """
         message["status"] = DownloadStatus.QUEUED.value
         message["processing_order"]=datetime.now()
+        message["caption"] = None
         try:
             result = await self.users_collection.update_one(
                 {"_id":id,
@@ -187,18 +188,25 @@ class AsyncDatabase:
     async def update_status_message(self, 
                                     user_id:int, 
                                     message_id:int, 
-                                    status: WatermarkStatus | DownloadStatus):
+                                    status: WatermarkStatus | DownloadStatus, fields: dict=None):
         
         try: 
             if not isinstance(status,(WatermarkStatus, DownloadStatus)):
                 return False
             
+            set_fields = {"messages.$.status":status.value}
+
+            if fields:       
+                set_fields.update({
+                    f"messages.$.{k}": v 
+                    for k,v in fields.items()
+                })
+            
+            
             result = await self.users_collection.update_one(
                 {"_id":user_id,
                 "messages.message_id":message_id},
-                {"$set":{
-                    "messages.$.status":status.value
-                }}
+                {"$set": set_fields}
             )
             return result.modified_count > 0 
         
