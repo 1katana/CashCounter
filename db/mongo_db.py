@@ -2,7 +2,7 @@ from motor.motor_asyncio import AsyncIOMotorClient
 from pymongo.errors import PyMongoError
 from datetime import datetime
 import logging
-from db.statuses import Status,DownloadStatus,WatermarkStatus
+from db.statuses import Status,DownloadStatus,WatermarkStatus,DoneStatus
 from typing import Dict, List, Union
 
 
@@ -21,10 +21,6 @@ class AsyncDatabase:
             self.users_collection = self.db['users']
             logging.info(f"Connected to MongoDB database: {db_name}")
 
-            self.type_file_map = {
-                DownloadStatus: "file_download",
-                WatermarkStatus: "files_watermark"
-            }
         except PyMongoError as e:
             logging.error(f"Failed to connect to MongoDB: {e}")
 
@@ -40,16 +36,7 @@ class AsyncDatabase:
                 ):
         
         if config is None:
-            config = {
-                        "text": "watermark",
-                        "color": (255, 255, 255, 128),
-                        "font_size": 20,
-                        "font_family": "Arial",
-                        "font_style": "normal",
-                        "text_weight": "normal",
-                        "line_spacing": 50,
-                        "angle": 0,
-                    }
+            config = self.get_default_config()
             
             
         try:
@@ -146,7 +133,7 @@ class AsyncDatabase:
             logging.error(f"update error: {e}")
             return False
         
-    async def get_configuration(self, user_id:int):
+    async def get_configuration(self, user_id:int) -> Dict|None:
         try:
             result = await self.users_collection.find_one(
                 {"_id":user_id},
@@ -163,18 +150,30 @@ class AsyncDatabase:
         except PyMongoError as e:
             logging.error(f"Ошибка получения конфигурации: {e}")
             return None
+        
+    def get_default_config(self):
+        return {
+                    "text": "watermark",
+                    "color": (250, 250, 250, 128),
+                    "font_size": 60,
+                    "font_family": "Arial",
+                    "font_style": "normal",
+                    "text_weight": "normal",
+                    "line_spacing": 80,
+                    "angle": 45,
+                }
 
 
-    async def update_configuration(self, user_id:int, config:dict):
+    async def update_configuration(self, user_id:int, key,value):
         try:
 
             result = await self.users_collection.update_one(
                 {
-                    "_id": id
+                    "_id": user_id
                 },
                 {
                     "$set":{
-                        "config":config
+                        f"config.{key}":value
                     }
                 
                 }
@@ -182,16 +181,16 @@ class AsyncDatabase:
             return result.modified_count > 0 
 
         except PyMongoError as e:
-            logging.error(f"Updating config error: {e}")
+            logging.error(f"Ошибка при обновлении конфигурации '{key}' для пользователя {user_id}: {e}")
             return False
         
     async def update_status_message(self, 
                                     user_id:int, 
                                     message_id:int, 
-                                    status: WatermarkStatus | DownloadStatus, fields: dict=None):
+                                    status: WatermarkStatus | DownloadStatus |DoneStatus, fields: dict=None):
         
         try: 
-            if not isinstance(status,(WatermarkStatus, DownloadStatus)):
+            if not isinstance(status,(WatermarkStatus, DownloadStatus,DoneStatus)):
                 return False
             
             set_fields = {"messages.$.status":status.value}

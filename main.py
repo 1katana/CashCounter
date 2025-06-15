@@ -2,7 +2,7 @@ from aiogram import Dispatcher, Router, Bot
 from const import Const
 from db.mongo_db import AsyncDatabase
 from observers.observer import Observer
-from tg.bot import setup_handlers  
+from tg.bot import setup_handlers,set_default_commands
 import asyncio
 from processing.OCR import OCR
 from processing.llm import LLM
@@ -25,6 +25,8 @@ observer_istance = Observer(bot_istance,
 
 async def main():
     await observer_istance.start()  
+
+    await set_default_commands(bot_istance)
 
     setup_handlers(router_istance, bot_istance, db_istance, observer_istance)
 

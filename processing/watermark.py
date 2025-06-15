@@ -7,7 +7,7 @@ def add_watermark(input_image_path,
                  output_image_path, 
                  watermark_text, 
                  line_spacing=50, 
-                 font_size=40,
+                 font_size_relative=40,
                  angle=45, 
                  color=(255, 255, 255, 128)) -> str|None:
     """
@@ -46,13 +46,17 @@ def add_watermark(input_image_path,
         
         image = Image.open(input_image_path).convert("RGBA")
         width, height = image.size
+        diagonal_length = int(math.sqrt(width**2 + height**2))*2
+
+        font_size = int(diagonal_length * (font_size_relative/2000))
+        print(font_size)
         
         try:
             font = ImageFont.truetype("arial.ttf", font_size)
         except:
             font = ImageFont.load_default()
         
-        diagonal_length = int(math.sqrt(width**2 + height**2))*2
+        
 
         watermark = Image.new("RGBA", (diagonal_length,diagonal_length), (0, 0, 0, 0))
         draw = ImageDraw.Draw(watermark)
@@ -95,16 +99,7 @@ def add_watermark(input_image_path,
         return None
     
     
-    
-if __name__ == "__main__":
-    add_watermark("images/dowload/1595227146122330398.jpg", 
-                  "images/with_watermark/", 
-                  "Watermark Text", 
-                  line_spacing=80, 
-                  font_size=40, 
-                  angle=45, 
-                  color=(180, 180, 180, 128))
-    
+
     
     
     

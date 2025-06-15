@@ -3,20 +3,31 @@ from aiogram import Bot, F
 from db.statuses import DownloadStatus, WatermarkStatus
 from db.mongo_db import AsyncDatabase
 from observers.observer import Observer
-from aiogram.types import Message
+from aiogram.types import Message, CallbackQuery
 from aiogram import Dispatcher, Router, Bot
 from aiogram.filters import Command
 from aiogram_media_group import media_group_handler
 import logging
-from datetime import datetime
-
+from tg.stategroup import ConfigEdit, config_inline_keyboard
+from aiogram.fsm.context import FSMContext  
+from aiogram.types import BotCommand
 
 logging.basicConfig(level=logging.INFO,
                     format="tg: [%(asctime)s] %(levelname)s: %(message)s",
                     handlers=[logging.FileHandler("tg.log"),
                               logging.StreamHandler()]) 
 
+async def set_default_commands(bot: Bot):
+    commands = [
+        BotCommand(command="start", description="Запустить бота"),
+        BotCommand(command="config", description="Настроить водяной знак"),
+        BotCommand(command="help", description="Справка"),
+    ]
+    await bot.set_my_commands(commands)
+
 def setup_handlers(router:Router,bot:Bot,db:AsyncDatabase,observer:Observer):
+
+    
 
     @router.message(Command("start"))
     async def start_handler(message: Message):
@@ -34,7 +45,70 @@ def setup_handlers(router:Router,bot:Bot,db:AsyncDatabase,observer:Observer):
             logging.error(f"Ошибка в start_handler для {message.from_user.id}: {e}")
             await message.answer("❌ Произошла ошибка при регистрации. Попробуй позже.")
 
+    @router.message(Command("config"))
+    async def config_handler(message: Message, state: FSMContext):
 
+        pop_list = [
+            "font_family",
+            "font_style",
+            "text_weight"
+        ]
+        try:
+            user_id = message.from_user.id
+            config = (await db.get_configuration(user_id))["config"]
+
+            for key in pop_list:
+                config.pop(key)
+
+            await message.answer("🛠 Настройки водяного знака:", 
+                         reply_markup=config_inline_keyboard(config))
+        except Exception as e:
+            logging.error(f"Ошибка в config_handler: {e}")
+            await message.answer("❌ Произошла ошибка при настройки конфигурации. Попробуйте позже.")
+
+    @router.callback_query(F.data.startswith("edit_"))
+    async def config_edit_callback(callback:CallbackQuery,state:FSMContext):
+        key = callback.data.removeprefix("edit_")
+        await state.update_data(key=key)
+        await callback.message.answer(f"Введите новое значение для параметра `{key}`:")
+        await state.set_state(ConfigEdit.waiting_for_value)
+        await callback.answer()
+
+    @router.message(ConfigEdit.waiting_for_value)
+    async def config_edit_value(message: Message, state: FSMContext):
+        user_id = message.from_user.id
+        value_raw = message.text.strip()
+        user_data = await state.get_data()
+        key = user_data["key"]
+
+        if key == "color":
+
+            parts = value_raw.replace(', ', ' ').replace(',', ' ').split()
+
+            if len(parts) != 4:
+                raise ValueError("Ожидается 4 компонента: R, G, B, A (например: 255 255 255 128)")
+            try:
+                value = [int(x) for x in parts]
+            except ValueError:
+                raise ValueError("Все компоненты цвета должны быть целыми числами.")
+
+        elif key in ["font_size", "line_spacing", "angle"]:
+            try:
+                value = int(value_raw)
+            except ValueError:
+                raise ValueError(f"Ожидалось целочисленное значение для параметра '{key}'.")
+        else:
+            value = value_raw
+        try:
+            success = await db.update_configuration(user_id, key, value)
+            if success:
+                await message.answer(f"✅ Параметр `{key}` обновлён.")
+            else:
+                await message.answer("❌ Не удалось сохранить настройку.")
+
+            await state.clear()
+        except Exception as e:
+            await message.answer("❌ Не удалось сохранить настройку.")
 
 
     @router.message(

@@ -2,7 +2,7 @@
 from aiogram import Bot
 from const import Const
 from db.mongo_db import AsyncDatabase
-from db.statuses import WatermarkStatus,DownloadStatus
+from db.statuses import WatermarkStatus,DownloadStatus,DoneStatus
 from aiogram.types import FSInputFile, InputMediaPhoto
 from aiogram import Bot
 import asyncio
@@ -69,7 +69,7 @@ class Observer:
     async def __upload_to_send(self):
         current_items = {item["_id"] for item in self.send_queue._queue}  
         new_items = [
-            item for item in await self.db.get_users_with_files_by_status([WatermarkStatus.DONE,WatermarkStatus.ERROR_DONE],2)
+            item for item in await self.db.get_users_with_files_by_status([WatermarkStatus.CAPTION,WatermarkStatus.NOT_CAPTION],2)
             if item["user_id"] not in current_items  
         ]
         for item in new_items:
@@ -105,7 +105,7 @@ class Observer:
             except Exception as e:
                 logging.error(f"Ошибка скачивания {e}")
             
-            await asyncio.sleep(0)
+            await asyncio.sleep(0.1)
 
 
     async def process_image(self,semaphore=asyncio.Semaphore(1)):
@@ -120,9 +120,12 @@ class Observer:
 
                     full_text = ""
                     caption = None
+
+                    rm_path = []
                     
                     for file in message["files"]:
                         path = str(Path(self.file_path_download) / f"{file['file_path']}")
+                        rm_path.append(path)
                         
                         watermark_path = None
 
@@ -170,7 +173,7 @@ class Observer:
                         logging.warning(f"LLM не удалось для файла {file['file_id']}: {e}")
 
 
-                    status = WatermarkStatus.DONE if caption else WatermarkStatus.ERROR_DONE
+                    status = WatermarkStatus.CAPTION if caption else WatermarkStatus.NOT_CAPTION
                     message["status"] = status.value
                     await self.db.update_status_message(
                         user_id,
@@ -179,7 +182,15 @@ class Observer:
                         fields = message
                     )
 
-                    # Удаление download
+                    # for f in rm_path:
+                    #     try:
+                    #         Path(f).unlink()
+                    #     except FileNotFoundError:
+                    #         logging.error("Файл уже удалён")
+                    #     except PermissionError:
+                    #         logging.error("Нет прав на удаление файла")
+                    #     except Exception as e:
+                    #         logging.error(f"Ошибка при удалении файла: {e}")
 
                     self.process_queue.task_done()
                     await self.send_queue.put({"user_id":user_id,
@@ -187,7 +198,7 @@ class Observer:
 
             except Exception as e:
                 logging.error(f"Ошибка обработки сообщения: {e}")
-            await asyncio.sleep(0)
+            await asyncio.sleep(0.1)
         
     async def send_image(self,semaphore=asyncio.Semaphore(1)):
         while True:
@@ -214,10 +225,14 @@ class Observer:
 
                     await self.bot.send_media_group(chat_id=user_id, media=media)
 
+                    await self.db.update_status_message(user_id,
+                                                  message["message_id"],
+                                                  DoneStatus.DONE if message["caption"] else DoneStatus.ERROR_DONE)
+
                     self.send_queue.task_done()
 
             except Exception as e:
                 logging.error(f"Ошибка при обработке отправки: {e}")
 
-            await asyncio.sleep(0)
+            await asyncio.sleep(0.1)
             
