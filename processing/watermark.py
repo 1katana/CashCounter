@@ -1,7 +1,9 @@
 from PIL import Image, ImageDraw, ImageFont
 import math
 import os
+import logging
 
+logger = logging.getLogger(__name__)
 
 def add_watermark(input_image_path, 
                  output_image_path, 
@@ -49,7 +51,7 @@ def add_watermark(input_image_path,
         diagonal_length = int(math.sqrt(width**2 + height**2))*2
 
         font_size = int(diagonal_length * (font_size_relative/2000))
-        print(font_size)
+        logger.info(f"Font size: {font_size}")
         
         try:
             font = ImageFont.truetype("arial.ttf", font_size)
@@ -95,7 +97,7 @@ def add_watermark(input_image_path,
         return output_image_path
     
     except Exception as e:
-        print(f"Error: {e}")
+        logger.error(f"Error: {e}")
         return None
     
     

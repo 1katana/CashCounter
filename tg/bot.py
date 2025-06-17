@@ -7,15 +7,12 @@ from aiogram.types import Message, CallbackQuery
 from aiogram import Dispatcher, Router, Bot
 from aiogram.filters import Command
 from aiogram_media_group import media_group_handler
-import logging
 from tg.stategroup import ConfigEdit, config_inline_keyboard
 from aiogram.fsm.context import FSMContext  
 from aiogram.types import BotCommand
+import logging
 
-logging.basicConfig(level=logging.INFO,
-                    format="tg: [%(asctime)s] %(levelname)s: %(message)s",
-                    handlers=[logging.FileHandler("tg.log"),
-                              logging.StreamHandler()]) 
+logger = logging.getLogger(__name__)
 
 async def set_default_commands(bot: Bot):
     commands = [
@@ -40,9 +37,9 @@ def setup_handlers(router:Router,bot:Bot,db:AsyncDatabase,observer:Observer):
             )
 
             await message.answer("👋 Привет! Ты был успешно зарегистрирован.")
-            logging.info(f"Пользователь {message.from_user.id} начал работу.")
+            logger.info(f"Пользователь {message.from_user.id} начал работу.")
         except Exception as e:
-            logging.error(f"Ошибка в start_handler для {message.from_user.id}: {e}")
+            logger.error(f"Ошибка в start_handler для {message.from_user.id}: {e}")
             await message.answer("❌ Произошла ошибка при регистрации. Попробуй позже.")
 
     @router.message(Command("config"))
@@ -63,7 +60,7 @@ def setup_handlers(router:Router,bot:Bot,db:AsyncDatabase,observer:Observer):
             await message.answer("🛠 Настройки водяного знака:", 
                          reply_markup=config_inline_keyboard(config))
         except Exception as e:
-            logging.error(f"Ошибка в config_handler: {e}")
+            logger.error(f"Ошибка в config_handler: {e}")
             await message.answer("❌ Произошла ошибка при настройки конфигурации. Попробуйте позже.")
 
     @router.callback_query(F.data.startswith("edit_"))
@@ -154,7 +151,7 @@ def setup_handlers(router:Router,bot:Bot,db:AsyncDatabase,observer:Observer):
             await messages[0].answer(f"✅ Сохранено {success}/{len(messages)} изображений")
 
         except Exception as e:
-                logging.error(f"ERROR: {e}")
+                logger.error(f"ERROR: {e}")
                 await messages[0].answer(f"❌ Не получилось обработать файлы")
 
 
@@ -186,7 +183,7 @@ def setup_handlers(router:Router,bot:Bot,db:AsyncDatabase,observer:Observer):
                                                    })
 
         except Exception as e:
-            logging.error(f"ERROR: {e}")
+            logger.error(f"ERROR: {e}")
             await message.answer(f"❌ Не получилось обработать файлы")
 
 

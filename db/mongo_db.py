@@ -1,16 +1,11 @@
 from motor.motor_asyncio import AsyncIOMotorClient
 from pymongo.errors import PyMongoError
 from datetime import datetime
-import logging
 from db.statuses import Status,DownloadStatus,WatermarkStatus,DoneStatus
 from typing import Dict, List, Union
+import logging
 
-
-logging.basicConfig(level=logging.INFO,
-                    format="[%(asctime)s] %(levelname)s: %(message)s",
-                    handlers=[logging.FileHandler("db.log"),
-                              logging.StreamHandler()]) 
-
+logger = logging.getLogger(__name__)
 
 
 class AsyncDatabase:
@@ -19,10 +14,10 @@ class AsyncDatabase:
             self.client = AsyncIOMotorClient('mongodb://localhost:27017/')
             self.db = self.client[db_name]
             self.users_collection = self.db['users']
-            logging.info(f"Connected to MongoDB database: {db_name}")
+            logger.info(f"Connected to MongoDB database: {db_name}")
 
         except PyMongoError as e:
-            logging.error(f"Failed to connect to MongoDB: {e}")
+            logger.error(f"Failed to connect to MongoDB: {e}")
 
 
     def __call__(self, *args, **kwds):
@@ -55,10 +50,10 @@ class AsyncDatabase:
                 },
                 upsert=True 
             )
-            logging.info(f"User {id} added or updated")
+            logger.info(f"User {id} added or updated")
 
         except PyMongoError as e:
-            logging.error(f"Error adding user {id}: {e}")
+            logger.error(f"Error adding user {id}: {e}")
 
 
     async def add_message(self, id: int, message: dict):
@@ -94,7 +89,7 @@ class AsyncDatabase:
                 return {"user_id":id,"message": message}
             return None
         except PyMongoError as e:
-            logging.error(f"Ошибка добавления сообщения пользователю {id}: {e}")
+            logger.error(f"Ошибка добавления сообщения пользователю {id}: {e}")
             return None
     
 
@@ -130,7 +125,7 @@ class AsyncDatabase:
             return result.modified_count>0
         
         except PyMongoError as e:
-            logging.error(f"update error: {e}")
+            logger.error(f"update error: {e}")
             return False
         
     async def get_configuration(self, user_id:int) -> Dict|None:
@@ -148,7 +143,7 @@ class AsyncDatabase:
             return result
         
         except PyMongoError as e:
-            logging.error(f"Ошибка получения конфигурации: {e}")
+            logger.error(f"Ошибка получения конфигурации: {e}")
             return None
         
     def get_default_config(self):
@@ -181,7 +176,7 @@ class AsyncDatabase:
             return result.modified_count > 0 
 
         except PyMongoError as e:
-            logging.error(f"Ошибка при обновлении конфигурации '{key}' для пользователя {user_id}: {e}")
+            logger.error(f"Ошибка при обновлении конфигурации '{key}' для пользователя {user_id}: {e}")
             return False
         
     async def update_status_message(self, 
@@ -210,7 +205,7 @@ class AsyncDatabase:
             return result.modified_count > 0 
         
         except PyMongoError as e:
-            logging.error(f"Updating status error: {e}")
+            logger.error(f"Updating status error: {e}")
             return False
 
     
@@ -262,7 +257,7 @@ class AsyncDatabase:
             return await cursor.to_list(length=limit)
             
         except PyMongoError as e:
-            logging.error(f"Update error for:{id}")
+            logger.error(f"Update error for:{id}")
             return []
 
 

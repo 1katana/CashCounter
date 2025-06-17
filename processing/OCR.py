@@ -4,11 +4,9 @@ import asyncio
 import aiofiles
 import logging
 from asyncio import Semaphore
+from processing.decorators import retry_async
 
-
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
-
 
 class OCR:
 
@@ -48,7 +46,7 @@ class OCR:
     def __wapper_text(self,text:str):
         return f"O\n{text}\nO"
 
-
+    @retry_async(logger = logger)
     async def get_text_from_image(self,image_path: str):
         try:
             async with aiofiles.open(image_path, 'rb') as image_file:
@@ -63,7 +61,9 @@ class OCR:
                 return wrapped_result
             else:
                 logger.warning(f"Не удалось распознать текст с изображения {image_path}")
+                return None
 
         except Exception as e:
             logger.exception(f"Ошибка при обработке файла {image_path}: {e}")
+            return None
 

@@ -1,6 +1,6 @@
 from openai import AsyncOpenAI
 import asyncio
-
+from processing.decorators import retry_async
 
 
 
@@ -15,7 +15,7 @@ class LLM:
             api_key=API_KEY,
         )
 
-        
+    @retry_async()
     async def ask_llm(self, user_message: str):
         completion = await self.client.chat.completions.create(
             extra_body={},

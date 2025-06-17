@@ -14,3 +14,4 @@ class WatermarkStatus(Status):
 class DoneStatus(Status):
     ERROR_DONE = "error_done"
     DONE = "done"
+    FAILED = "failed"

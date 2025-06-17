@@ -6,6 +6,9 @@ from tg.bot import setup_handlers,set_default_commands
 import asyncio
 from processing.OCR import OCR
 from processing.llm import LLM
+from logging_config import setup_logging
+
+setup_logging()
 
 bot_istance = Bot(Const.TELEGRAM_TOKEN)
 dp = Dispatcher()
@@ -22,6 +25,8 @@ observer_istance = Observer(bot_istance,
                             LLM_instance, 
                             Const.FILE_PATH_DOWNLOAD, 
                             Const.FILE_PATH_PROCESSED)
+
+
 
 async def main():
     await observer_istance.start()  
