@@ -1,8 +1,9 @@
 from pathlib import Path
 import os
-
+from dotenv import load_dotenv
 
 class Const:
+    load_dotenv()
     
     OCR_URL = os.getenv("OCR_URL")
     OCR_API_KEY = os.getenv("OCR_API_KEY")
