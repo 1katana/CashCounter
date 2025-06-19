@@ -10,6 +10,7 @@ from aiogram_media_group import media_group_handler
 from tg.stategroup import ConfigEdit, config_inline_keyboard
 from aiogram.fsm.context import FSMContext  
 from aiogram.types import BotCommand
+from aiogram.enums import ParseMode
 import logging
 
 logger = logging.getLogger(__name__)
@@ -36,11 +37,42 @@ def setup_handlers(router:Router,bot:Bot,db:AsyncDatabase,observer:Observer):
                 last_name=message.from_user.last_name
             )
 
-            await message.answer("👋 Привет! Ты был успешно зарегистрирован.")
+            await message.answer("👋 <b>Привет!</b> Ты был успешно зарегистрирован.\n\n"
+                                 "ℹ️ <b>Как пользоваться ботом:</b>\n\n"
+                "📥 Просто отправь изображения, и бот обработает их: распознает текст (OCR), добавит водяной знак и сформирует подпись с помощью ИИ.\n\n"
+                "⚙️ <b>Настройка водяного знака:</b>\n"
+                "Используй команду /config, чтобы изменить:\n"
+                "• <b>text</b> — текст водяного знака\n"
+                "• <b>color</b> — цвет (в формате RGBA, например: 255,255,255,128)\n"
+                "• <b>font_size</b> — размер шрифта\n"
+                "• <b>line_spacing</b> — межстрочный интервал\n"
+                "• <b>angle</b> — угол наклона текста\n\n",
+                parse_mode=ParseMode.HTML
+            )
             logger.info(f"Пользователь {message.from_user.id} начал работу.")
         except Exception as e:
             logger.error(f"Ошибка в start_handler для {message.from_user.id}: {e}")
             await message.answer("❌ Произошла ошибка при регистрации. Попробуй позже.")
+
+    @router.message(Command("help"))
+    async def help_handler(message: Message):
+        try:
+            await message.answer(
+                "ℹ️ <b>Как пользоваться ботом:</b>\n\n"
+                "📥 Просто отправь изображения, и бот обработает их: распознает текст (OCR), добавит водяной знак и сформирует подпись с помощью ИИ.\n\n"
+                "⚙️ <b>Настройка водяного знака:</b>\n"
+                "Используй команду /config, чтобы изменить:\n"
+                "• <b>text</b> — текст водяного знака\n"
+                "• <b>color</b> — цвет (в формате RGBA, например: 255,255,255,128)\n"
+                "• <b>font_size</b> — размер шрифта\n"
+                "• <b>line_spacing</b> — межстрочный интервал\n"
+                "• <b>angle</b> — угол наклона текста",
+                parse_mode=ParseMode.HTML
+            )
+        except Exception as e:
+            logger.error(f"Ошибка в help_handler для {message.from_user.id}: {e}")
+            await message.answer("❌ Произошла ошибка. Попробуй позже.")
+
 
     @router.message(Command("config"))
     async def config_handler(message: Message, state: FSMContext):
