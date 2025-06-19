@@ -111,8 +111,8 @@ class Observer:
                     if message["retries"] < self.MAX_RETRIERS:
                         await self.download_queue.put({
                         "user_id": user_id,
-                        "message": message
-                    },True)
+                        "message": message},
+                        True)
                         
                     else:
                         await self.db.update_status_message(user_id,
@@ -212,7 +212,7 @@ class Observer:
                     message["retries"] += 1
 
                     if message["retries"] < self.MAX_RETRIERS:
-                        await self.process_queue({"user_id":user_id,
+                        await self.process_queue.put({"user_id":user_id,
                                                     "message":message},True)
                         
                     else: 
