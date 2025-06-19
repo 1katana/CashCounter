@@ -56,7 +56,7 @@ def add_watermark(input_image_path,
         try:
             font = ImageFont.truetype("arial.ttf", font_size)
         except:
-            font = ImageFont.load_default()
+            font = ImageFont.load_default(font_size)
         
         
 
